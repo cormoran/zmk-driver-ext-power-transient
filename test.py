@@ -75,7 +75,12 @@ class WestCommandsTests(unittest.TestCase):
         else:
             # ZMK v0.3: board named seeeduino_xiao_ble (flat layout)
             artifact = "seeeduino_xiao_ble__tester_xiao"
-            west_build_args = ["--board", "seeeduino_xiao_ble", "--shield", "tester_xiao"]
+            west_build_args = [
+                "--board",
+                "seeeduino_xiao_ble",
+                "--shield",
+                "tester_xiao",
+            ]
         self._test_zmk_build(
             west_build_args,
             {
@@ -95,7 +100,7 @@ class WestCommandsTests(unittest.TestCase):
                         "DT_COMPAT_HAS_OKAY_zmk_ext_power_transient",
                     ],
                 ),
-            }
+            },
         )
 
     def _test_zmk_build(
@@ -115,6 +120,8 @@ class WestCommandsTests(unittest.TestCase):
         for artifact, entries in artifacts_and_expected_build_params.items():
             artifact_dir = self.BUILD_DIR / artifact / "zephyr"
             config_path = artifact_dir / ".config"
+            # Newer Zephyr (ZMK master) puts devicetree_generated.h under generated/zephyr/,
+            # older Zephyr (ZMK v0.3) puts it directly under generated/.
             device_tree_path = (
                 artifact_dir
                 / "include"
@@ -122,6 +129,10 @@ class WestCommandsTests(unittest.TestCase):
                 / "zephyr"
                 / "devicetree_generated.h"
             )
+            if not device_tree_path.exists():
+                device_tree_path = (
+                    artifact_dir / "include" / "generated" / "devicetree_generated.h"
+                )
             self._test_strings_in_file(
                 config_path, entries.config, f"{artifact} config"
             )
