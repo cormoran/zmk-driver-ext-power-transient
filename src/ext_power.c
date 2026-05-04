@@ -42,6 +42,7 @@ static int ext_power_transient_enable(const struct device *dev) {
         }
     }
     data->status = true;
+    LOG_DBG("ext_power_transient: enable");
     return 0;
 }
 
@@ -57,6 +58,7 @@ static int ext_power_transient_disable(const struct device *dev) {
         }
     }
     data->status = false;
+    LOG_DBG("ext_power_transient: disable");
     return 0;
 }
 

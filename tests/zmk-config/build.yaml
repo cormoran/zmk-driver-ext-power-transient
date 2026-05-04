@@ -2,3 +2,6 @@ include:
   - artifact: ext_power_transient_xiao_ble
     board: xiao_ble//zmk
     shield: tester_xiao
+  - artifact: ext_power_transient_seeeduino_xiao_ble
+    board: seeeduino_xiao_ble
+    shield: tester_xiao

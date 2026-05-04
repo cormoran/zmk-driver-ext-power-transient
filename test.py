@@ -40,6 +40,20 @@ class WestCommandsTests(unittest.TestCase):
         cls.WEST_TOPDIR = Path(run_west(["topdir"]).stdout.strip())
         cls.BUILD_DIR = cls.WEST_TOPDIR / "build"
 
+    @classmethod
+    def _get_board_artifact(cls) -> str:
+        """Detect which ZMK version is installed and return the right build artifact name.
+
+        ZMK main stores boards in subdirectories (app/boards/seeed/xiao_ble/).
+        ZMK v0.3 has a flat board layout (app/boards/seeeduino_xiao_ble.conf).
+        """
+        zmk_seeed_dir = (
+            cls.WEST_TOPDIR / "dependencies" / "zmk" / "app" / "boards" / "seeed"
+        )
+        if zmk_seeed_dir.is_dir():
+            return "ext_power_transient_xiao_ble"
+        return "ext_power_transient_seeeduino_xiao_ble"
+
     @unittest.skipUnless(
         platform.system() == "Linux", "zmk-test is only supported on Linux"
     )
@@ -53,9 +67,10 @@ class WestCommandsTests(unittest.TestCase):
         self.assertNotIn("FAIL: ", result.stdout, result.stdout + result.stderr)
 
     def test_zmk_build(self):
+        artifact = self._get_board_artifact()
         self._test_zmk_build(
             {
-                "ext_power_transient_xiao_ble": ConfigAndDeviceTree(
+                artifact: ConfigAndDeviceTree(
                     config=[
                         # Verify that the keyboard name is set correctly
                         'CONFIG_ZMK_KEYBOARD_NAME="Ext Power Test"',
@@ -81,7 +96,10 @@ class WestCommandsTests(unittest.TestCase):
         for artifact in artifacts_and_expected_build_params.keys():
             shutil.rmtree(self.BUILD_DIR / artifact, ignore_errors=True)
 
-        result = run_west(["zmk-build", "tests/zmk-config/config", "-q"])
+        artifact = next(iter(artifacts_and_expected_build_params.keys()))
+        result = run_west(
+            ["zmk-build", "tests/zmk-config/config", "--artifact", artifact, "-q"]
+        )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
         for artifact, entries in artifacts_and_expected_build_params.items():

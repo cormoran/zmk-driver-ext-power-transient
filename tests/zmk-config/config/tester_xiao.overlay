@@ -4,7 +4,3 @@
 		control-gpios = <&gpio0 9 (GPIO_ACTIVE_LOW)>; // NFC1 on XIAO nRF52840
 	};
 };
-
-&board_cdc_acm_uart {
-	status = "disabled";
-};
