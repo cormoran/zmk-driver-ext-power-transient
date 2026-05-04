@@ -1,0 +1,4 @@
+include:
+  - artifact: ext_power_transient_xiao_ble
+    board: xiao_ble//zmk
+    shield: tester_xiao
