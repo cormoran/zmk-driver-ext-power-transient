@@ -6,6 +6,10 @@ description: |
   Intended to be used for switching power supply friquently to save power.
 compatible: "zmk,ext-power-transient"
 properties:
+  label:
+    type: string
+    required: false
+    deprecated: true
   control-gpios:
     type: phandle-array
     required: true

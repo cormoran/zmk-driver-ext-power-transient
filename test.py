@@ -41,18 +41,19 @@ class WestCommandsTests(unittest.TestCase):
         cls.BUILD_DIR = cls.WEST_TOPDIR / "build"
 
     @classmethod
-    def _get_board_artifact(cls) -> str:
-        """Detect which ZMK version is installed and return the right build artifact name.
+    def _is_zmk_master(cls) -> bool:
+        """Detect if ZMK master (vs v0.3) is installed.
 
         ZMK main stores boards in subdirectories (app/boards/seeed/xiao_ble/).
         ZMK v0.3 has a flat board layout (app/boards/seeeduino_xiao_ble.conf).
         """
-        zmk_seeed_dir = (
-            cls.WEST_TOPDIR / "dependencies" / "zmk" / "app" / "boards" / "seeed"
-        )
-        if zmk_seeed_dir.is_dir():
-            return "ext_power_transient_xiao_ble"
-        return "ext_power_transient_seeeduino_xiao_ble"
+        for zmk_candidate in [
+            cls.WEST_TOPDIR / "dependencies" / "zmk",
+            cls.WEST_TOPDIR / "zmk",
+        ]:
+            if zmk_candidate.is_dir():
+                return (zmk_candidate / "app" / "boards" / "seeed").is_dir()
+        return False
 
     @unittest.skipUnless(
         platform.system() == "Linux", "zmk-test is only supported on Linux"
@@ -67,8 +68,16 @@ class WestCommandsTests(unittest.TestCase):
         self.assertNotIn("FAIL: ", result.stdout, result.stdout + result.stderr)
 
     def test_zmk_build(self):
-        artifact = self._get_board_artifact()
+        if self._is_zmk_master():
+            # ZMK master: board renamed to xiao_ble with qualifier
+            artifact = "ext_power_transient_xiao_ble"
+            west_build_args = ["--artifact", artifact]
+        else:
+            # ZMK v0.3: board named seeeduino_xiao_ble (flat layout)
+            artifact = "seeeduino_xiao_ble__tester_xiao"
+            west_build_args = ["--board", "seeeduino_xiao_ble", "--shield", "tester_xiao"]
         self._test_zmk_build(
+            west_build_args,
             {
                 artifact: ConfigAndDeviceTree(
                     config=[
@@ -90,15 +99,16 @@ class WestCommandsTests(unittest.TestCase):
         )
 
     def _test_zmk_build(
-        self, artifacts_and_expected_build_params: dict[str, ConfigAndDeviceTree]
+        self,
+        west_build_args: list[str],
+        artifacts_and_expected_build_params: dict[str, ConfigAndDeviceTree],
     ):
 
         for artifact in artifacts_and_expected_build_params.keys():
             shutil.rmtree(self.BUILD_DIR / artifact, ignore_errors=True)
 
-        artifact = next(iter(artifacts_and_expected_build_params.keys()))
         result = run_west(
-            ["zmk-build", "tests/zmk-config/config", "--artifact", artifact, "-q"]
+            ["zmk-build", "tests/zmk-config/config"] + west_build_args + ["-q"]
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
