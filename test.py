@@ -1,0 +1,165 @@
+import platform
+import shutil
+import subprocess
+import unittest
+from pathlib import Path
+
+from dataclasses import dataclass
+
+THIS_DIR = Path(__file__).parent.resolve()
+
+
+def run_west(args: list[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["west", *args],
+        capture_output=True,
+        text=True,
+        cwd=THIS_DIR,
+    )
+
+
+@dataclass
+class NotFound:
+    text: str
+
+
+@dataclass
+class ConfigAndDeviceTree:
+    # Expected rows in .config
+    config: list[str | NotFound]
+    # Expected rows in devicetree_generated.h
+    device: list[str | NotFound]
+
+
+class WestCommandsTests(unittest.TestCase):
+    WEST_TOPDIR: Path
+    BUILD_DIR: Path
+
+    @classmethod
+    def setUpClass(cls):
+        cls.WEST_TOPDIR = Path(run_west(["topdir"]).stdout.strip())
+        cls.BUILD_DIR = cls.WEST_TOPDIR / "build"
+
+    @classmethod
+    def _is_zmk_master(cls) -> bool:
+        """Detect if ZMK master (vs v0.3) is installed.
+
+        ZMK main stores boards in subdirectories (app/boards/seeed/xiao_ble/).
+        ZMK v0.3 has a flat board layout (app/boards/seeeduino_xiao_ble.conf).
+        """
+        for zmk_candidate in [
+            cls.WEST_TOPDIR / "dependencies" / "zmk",
+            cls.WEST_TOPDIR / "zmk",
+        ]:
+            if zmk_candidate.is_dir():
+                return (zmk_candidate / "app" / "boards" / "seeed").is_dir()
+        return False
+
+    @unittest.skipUnless(
+        platform.system() == "Linux", "zmk-test is only supported on Linux"
+    )
+    def test_zmk_test(self):
+        test_build_dir = self.BUILD_DIR / THIS_DIR.name
+        shutil.rmtree(test_build_dir, ignore_errors=True)
+
+        result = run_west(["zmk-test", "tests", "-m", ".", "-d", str(test_build_dir)])
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("PASS: ", result.stdout, result.stdout + result.stderr)
+        self.assertNotIn("FAIL: ", result.stdout, result.stdout + result.stderr)
+
+    def test_zmk_build(self):
+        if self._is_zmk_master():
+            # ZMK master: board renamed to xiao_ble with qualifier
+            artifact = "ext_power_transient_xiao_ble"
+            west_build_args = ["--artifact", artifact]
+        else:
+            # ZMK v0.3: board named seeeduino_xiao_ble (flat layout)
+            artifact = "seeeduino_xiao_ble__tester_xiao"
+            west_build_args = [
+                "--board",
+                "seeeduino_xiao_ble",
+                "--shield",
+                "tester_xiao",
+            ]
+        self._test_zmk_build(
+            west_build_args,
+            {
+                artifact: ConfigAndDeviceTree(
+                    config=[
+                        # Verify that the keyboard name is set correctly
+                        'CONFIG_ZMK_KEYBOARD_NAME="Ext Power Test"',
+                        # Verify that ext-power-transient driver is enabled
+                        "CONFIG_ZMK_DRIVER_EXT_POWER_TRANSIENT=y",
+                        # Verify that ZMK ext-power subsystem is selected
+                        "CONFIG_ZMK_EXT_POWER=y",
+                        # Verify that this config entry is not present
+                        NotFound("CONFIG_SHOULD_NOT_EXIST"),
+                    ],
+                    device=[
+                        # Verify that the ext-power-transient device is present in DT
+                        "DT_COMPAT_HAS_OKAY_zmk_ext_power_transient",
+                    ],
+                ),
+            },
+        )
+
+    def _test_zmk_build(
+        self,
+        west_build_args: list[str],
+        artifacts_and_expected_build_params: dict[str, ConfigAndDeviceTree],
+    ):
+
+        for artifact in artifacts_and_expected_build_params.keys():
+            shutil.rmtree(self.BUILD_DIR / artifact, ignore_errors=True)
+
+        result = run_west(
+            ["zmk-build", "tests/zmk-config/config"] + west_build_args + ["-q"]
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+        for artifact, entries in artifacts_and_expected_build_params.items():
+            artifact_dir = self.BUILD_DIR / artifact / "zephyr"
+            config_path = artifact_dir / ".config"
+            # Newer Zephyr (ZMK master) puts devicetree_generated.h under generated/zephyr/,
+            # older Zephyr (ZMK v0.3) puts it directly under generated/.
+            device_tree_path = (
+                artifact_dir
+                / "include"
+                / "generated"
+                / "zephyr"
+                / "devicetree_generated.h"
+            )
+            if not device_tree_path.exists():
+                device_tree_path = (
+                    artifact_dir / "include" / "generated" / "devicetree_generated.h"
+                )
+            self._test_strings_in_file(
+                config_path, entries.config, f"{artifact} config"
+            )
+            self._test_strings_in_file(
+                device_tree_path, entries.device, f"{artifact} device tree"
+            )
+            self.assertTrue(
+                (artifact_dir / "zmk.uf2").exists(),
+                f"{artifact} zmk.uf2 is missing in {artifact_dir}",
+            )
+
+    def _test_strings_in_file(
+        self, file_path: Path, expected_strings: list[str | NotFound], hint: str
+    ):
+        self.assertTrue(file_path.exists(), f"{hint}: {file_path} is missing")
+        file_text = file_path.read_text()
+
+        for expected in expected_strings:
+            if isinstance(expected, NotFound):
+                if expected.text in file_text:
+                    self.fail(
+                        f"{hint}: {expected.text} found in {file_path}, but it should not be present"
+                    )
+            else:
+                if expected not in file_text:
+                    self.fail(f"{hint}: {expected} not found in {file_path}")
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1,0 +1,40 @@
+#include <dt-bindings/zmk/keys.h>
+#include <behaviors.dtsi>
+#include <dt-bindings/zmk/kscan_mock.h>
+#include <dt-bindings/zmk/ext_power.h>
+
+/ {
+EXT_POWER: EXT_POWER {
+		compatible = "zmk,ext-power-transient";
+		label = "EXT_POWER";
+		control-gpios = <&gpio0 0 GPIO_ACTIVE_HIGH>;
+	};
+	
+	keymap {
+		compatible = "zmk,keymap";
+		
+		default_layer {
+			bindings = <
+			&ext_power EP_ON  &ext_power EP_OFF
+			&ext_power EP_TOG &ext_power EP_TOG
+			>;
+		};
+	};
+};
+
+&kscan {
+	events = <
+	/* EP_ON */
+	ZMK_MOCK_PRESS(0,0,10)
+	ZMK_MOCK_RELEASE(0,0,10)
+	/* EP_OFF */
+	ZMK_MOCK_PRESS(0,1,10)
+	ZMK_MOCK_RELEASE(0,1,10)
+	/* EP_TOG (off -> on) */
+	ZMK_MOCK_PRESS(1,0,10)
+	ZMK_MOCK_RELEASE(1,0,10)
+	/* EP_TOG (on -> off) */
+	ZMK_MOCK_PRESS(1,1,10)
+	ZMK_MOCK_RELEASE(1,1,10)
+	>;
+};
